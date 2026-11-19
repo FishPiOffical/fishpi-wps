@@ -3,6 +3,12 @@ name: Release
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/release.yml'
+      - 'install-*'
+      - 'scripts/**'
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 
@@ -30,7 +36,7 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Verify tag
-        if: github.event_name == 'push'
+        if: github.ref_type == 'tag'
         run: |
           version="$(node -p "require('./package.json').version")"
           if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
@@ -97,7 +103,7 @@ jobs:
           PATH=/usr/bin:/bin "${folder[0]}/runtime/bin/node" --check "${folder[0]}/dist/install.mjs"
 
   release:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 10
