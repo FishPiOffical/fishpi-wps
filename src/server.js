@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { actions, chat } from './actions.js'
 import { bridgeConfig, originFor } from './bridge-config.js'
 import { FishPiError, PLUGIN_VERSION } from './fishpi.js'
+import { readMacClipboardImage } from './mac-clipboard.js'
 
 const { port, token } = await bridgeConfig()
 const origin = originFor(port)
@@ -26,6 +27,8 @@ const types = { html: 'text/html; charset=utf-8', xml: 'application/xml; charset
 const json = 'application/json; charset=utf-8'
 const maxBody = 512 * 1024
 const galleries = new Map()
+const nativeClipboard = process.platform === 'darwin'
+let readingClipboard = false
 const galleryInput = z.object({
   index: z.number().int().nonnegative(),
   images: z.array(z.object({ src: z.url({ protocol: /^https?$/u }).max(4096), alt: z.string().max(256) })).min(1).max(200),
@@ -67,6 +70,24 @@ function saveGallery(input) {
   return { id }
 }
 
+async function pasteClipboardImage(res) {
+  if (!nativeClipboard) return send(res, 404, { ok: false })
+  if (readingClipboard) return send(res, 409, { ok: false })
+  const controller = new AbortController()
+  res.once('close', () => controller.abort())
+  readingClipboard = true
+  try {
+    const image = await readMacClipboardImage({ signal: controller.signal })
+    if (image.status === 'empty') return reply(res, 204, json)
+    if (image.status === 'too_large') return send(res, 413, { ok: false })
+    return reply(res, 200, image.type, image.data)
+  } catch {
+    return send(res, 503, { ok: false })
+  } finally {
+    readingClipboard = false
+  }
+}
+
 async function handle(req, res) {
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('Referrer-Policy', 'no-referrer')
@@ -89,7 +110,7 @@ async function handle(req, res) {
       const body = await readFile(new URL(`./web/${asset}`, import.meta.url))
       return reply(res, 200, types[asset.split('.').at(-1)], req.method === 'HEAD' ? undefined : body)
     }
-    if (path === 'health') return send(res, 200, { version: PLUGIN_VERSION })
+    if (path === 'health') return send(res, 200, { version: PLUGIN_VERSION, nativeClipboard })
     if (path === 'api/gallery') {
       const entry = galleries.get(url.searchParams.get('id'))
       if (entry?.expires > Date.now()) return send(res, 200, entry.gallery)
@@ -104,6 +125,7 @@ async function handle(req, res) {
     return send(res, 200, { ok: true })
   }
   if (path === 'api/gallery') return send(res, 200, saveGallery(await readInput(req)))
+  if (path === 'api/clipboard/image') return pasteClipboardImage(res)
   if (path !== 'api/chat') return send(res, 404, { ok: false })
 
   const request = rpcInput.parse(await readInput(req))

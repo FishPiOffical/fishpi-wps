@@ -2215,6 +2215,8 @@ function ChatPanel({ visible, t, onSettings }) {
   const recallTimerRef = useRef()
   const [recallingId, setRecallingId] = useState('')
   const [imagePreview, setImagePreview] = useState(null)
+  const [readingClipboard, setReadingClipboard] = useState(false)
+  const [pasteNotice, setPasteNotice] = useState('')
 
   const openImagePreview = async event => {
     const gallery = imagePreviewFromEvent(event)
@@ -2319,6 +2321,7 @@ function ChatPanel({ visible, t, onSettings }) {
       && typeof file.type === 'string'
       && file.type.startsWith('image/'))
     if (images.length === 0 || state.uploadingImages) return
+    setPasteNotice('')
     const result = await store.uploadImages(images)
     if (!result.ok || !Array.isArray(result.files) || result.files.length === 0) return
     const markdown = result.files
@@ -2344,6 +2347,23 @@ function ChatPanel({ visible, t, onSettings }) {
     if (files.length === 0) return
     event.preventDefault()
     void appendFiles(files)
+  }
+
+  const pasteClipboardImage = async event => {
+    if (!event.isTrusted || readingClipboard || state.uploadingImages) return
+    setReadingClipboard(true)
+    setPasteNotice('')
+    let files
+    try {
+      files = await bridge.readClipboardImages()
+    } catch (error) {
+      setPasteNotice(t(error?.tooLarge ? 'upload.limits' : 'composer.pasteUnavailable'))
+      return
+    } finally {
+      setReadingClipboard(false)
+    }
+    if (files.length === 0) setPasteNotice(t('composer.pasteEmpty'))
+    else await appendFiles(files)
   }
 
   const closeMention = () => {
@@ -2790,6 +2810,14 @@ function ChatPanel({ visible, t, onSettings }) {
           disabled: state.uploadingImages,
           onClick: () => fileInputRef.current?.click(),
         }, '+'),
+        h('button', {
+          type: 'button',
+          className: 'fc-plus fc-paste-image',
+          title: t('composer.pasteImage'),
+          'aria-label': t('composer.pasteImage'),
+          disabled: readingClipboard || state.uploadingImages,
+          onClick: event => { void pasteClipboardImage(event) },
+        }, t('composer.pasteShort')),
         h('textarea', {
           ref: textareaRef,
           className: 'fc-textarea',
@@ -2817,6 +2845,7 @@ function ChatPanel({ visible, t, onSettings }) {
           onClick: () => { void doSend() },
         }, state.sending ? t('composer.sending') : t('composer.send')),
       ),
+      pasteNotice === '' ? null : h('div', { className: 'fc-hint', role: 'status' }, pasteNotice),
       h('input', {
         ref: fileInputRef,
         type: 'file',

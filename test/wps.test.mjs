@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
-import { registerAddin } from '../src/registration.js'
+import { registerAddin, unregisterAddin } from '../src/registration.js'
 
 test('WPS registration removes FishPi debugging settings and preserves other add-ins', () => {
   const other = '<jspluginonline name="existing" url="https://example.test/" debug=""/>'
@@ -35,6 +35,14 @@ test('the website ribbon button opens the official FishPi site through WPS', asy
   runInNewContext(script, { window, URL })
   assert.equal(window.VisitFishPi(), true)
   assert.deepEqual(opened, ['https://fishpi.cn'])
+})
+
+test('uninstall removes just the FishPi add-in and is safe to repeat', () => {
+  const other = '<jspluginonline name="existing" debug=""/>'
+  const xml = `<jsplugins><!-- keep -->${other}<jspluginonline name="fishpi-wps"/><jspluginonline name="fishpi-wps"/></jsplugins>`
+  const removed = unregisterAddin(xml)
+  assert.equal(removed, `<jsplugins><!-- keep -->${other}</jsplugins>\n`)
+  assert.equal(unregisterAddin(removed), removed)
 })
 
 test('loopback bridge serves the WPS pages and protects chat and gallery requests', { timeout: 7000 }, async t => {
@@ -67,8 +75,11 @@ test('loopback bridge serves the WPS pages and protects chat and gallery request
   assert.equal((await fetch(`${origin}/ribbon.xml`)).status, 404)
   assert.match(await (await fetch(url('ribbon.xml'))).text(), /OpenFishPiChat/u)
   assert.match(await (await fetch(url('taskpane.html'))).text(), /taskpane\.js/u)
+  assert.equal((await (await fetch(url('health'))).json()).nativeClipboard, process.platform === 'darwin')
   const state = { name: 'fishpi_state', arguments: {} }
   assert.equal((await post('api/chat', state, 'https://example.test')).status, 403)
+  assert.equal((await post('api/clipboard/image', {}, 'https://example.test')).status, 403)
+  assert.equal((await fetch(url('api/clipboard/image'))).status, 404)
   assert.equal((await (await post('api/chat', state)).json()).structuredContent.loggedIn, false)
 
   const gallery = { index: 1, images: ['A', 'B'].map(alt => ({ src: `https://fishpi.cn/${alt}.png`, alt })) }

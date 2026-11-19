@@ -16,7 +16,34 @@
 
 安装完成后保存文档并完全退出 WPS，再打开 **WPS 文字**。如果 WPS 提示允许加载摸鱼派，选择允许。随后在顶部选择 **摸鱼派 → 打开聊天室**，使用摸鱼派账号登录。
 
-安装器会注册 WPS 加载项并启动仅监听 `127.0.0.1` 的本地服务。服务随当前用户登录启动，账号数据存放在用户主目录下的 `.fishpi-wps`。若移动了解压目录，或下载了新版 ZIP，在新目录里再运行一次安装脚本。
+安装器会注册 WPS 加载项并启动仅监听 `127.0.0.1` 的本地服务。服务随当前用户登录启动，账号数据存放在用户主目录下的 `.fishpi-wps`。若移动了解压目录，在新目录里再运行一次安装脚本。
+
+在 Windows 上可直接把图片粘贴到聊天输入框。如果 Mac 上的 `⌘V` 把图片插进了文档，请点击聊天室输入框旁的 **粘贴**，由本地服务读取系统剪贴板图片。macOS 若弹出权限提示，可以在允许后重试。也可以用 **+** 选择图片文件。
+
+## 升级
+
+保存文档并完全退出 WPS。从 [GitHub Releases](https://github.com/FishPiOffical/fishpi-wps/releases/latest) 下载新版 ZIP，解压到新目录，再运行对应的安装脚本即可覆盖注册。升级会保留已有账号和设置。重新打开 WPS 文字确认可用后，可删除旧版解压目录。
+
+也可以使用命令升级。若从 `0.1.0` 升级，先把 [update.mjs](https://raw.githubusercontent.com/FishPiOffical/fishpi-wps/v0.1.1/scripts/update.mjs) 保存到现有解压目录，与 `runtime` 文件夹并列。新版 ZIP 已附带此脚本。脚本会从 GitHub Releases 下载相应架构的 ZIP、校验 SHA-256，并在用户主目录的 `.fishpi-wps/releases` 中安装。Linux 命令升级需要系统有 `unzip`。
+
+| 系统 | 升级到 `0.1.1` |
+| --- | --- |
+| macOS / Linux | `./runtime/bin/node ./update.mjs v0.1.1` |
+| Windows（PowerShell） | `.\runtime\node.exe .\update.mjs v0.1.1` |
+
+省略版本参数会安装 GitHub 上最新的正式版本。
+
+## 卸载
+
+保存文档并完全退出 WPS，在 `0.1.1` 或更新版本的解压目录运行对应命令。这些命令同样可以卸载 `0.1.0`。
+
+| 系统 | 卸载命令 |
+| --- | --- |
+| macOS | `zsh install-mac.command --uninstall` |
+| Windows（PowerShell） | `.\install-windows.cmd --uninstall` |
+| Linux | `sh install-linux.sh --uninstall` |
+
+卸载会移除摸鱼派的 WPS 注册和登录启动项，并停止本地服务。重新打开 WPS 文字后，顶部入口会消失。账号和设置默认保留，方便重装。若要清理本地数据，卸载成功后可以删除用户主目录下的 `.fishpi-wps` 和之前解压的安装目录。
 
 ## 从源码安装
 

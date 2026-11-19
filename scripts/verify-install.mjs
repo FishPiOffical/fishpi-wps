@@ -46,10 +46,10 @@ try {
   }
   await mkdir(dirname(manifest), { recursive: true })
   await writeFile(manifest, '<jsplugins><jspluginonline name="existing" debug=""/><jspluginonline name="fishpi-wps" debug="" enable="enable_dev"/></jsplugins>')
-  const install = () => promisify(execFile)(executable, args, { cwd: temp, env, timeout: 25_000 })
+  const install = (...options) => promisify(execFile)(executable, [...args, ...options], { cwd: temp, env, timeout: 25_000 })
   await install()
   base = addinUrl(JSON.parse(await readFile(join(dataDir, 'bridge.json'), 'utf8')))
-  assert.deepEqual(await (await fetch(new URL('health', base))).json(), { version: packageInfo.version })
+  assert.deepEqual(await (await fetch(new URL('health', base))).json(), { version: packageInfo.version, nativeClipboard: false })
   assert.match(await (await fetch(new URL('ribbon.xml', base))).text(), /VisitFishPi/u)
   const xml = new DOMParser().parseFromString(await readFile(manifest, 'utf8'), 'application/xml')
   const entries = Array.from(xml.getElementsByTagName('jspluginonline'))
@@ -65,7 +65,20 @@ try {
   }
   await install()
   assert.equal((await fetch(new URL('health', base))).status, 200)
-  console.log(`WPS registration, startup setup, initial launch and reinstall passed on ${process.platform}`)
+  await install('--uninstall')
+  const uninstalled = await readFile(manifest, 'utf8')
+  assert.match(uninstalled, /name="existing"/u)
+  assert.doesNotMatch(uninstalled, /name="fishpi-wps"/u)
+  assert.equal(addinUrl(JSON.parse(await readFile(join(dataDir, 'bridge.json'), 'utf8'))), base)
+  assert.equal(await fetch(new URL('health', base)).then(response => response.ok, () => false), false)
+  if (!windows) {
+    await assert.rejects(readFile(join(config, 'autostart/fishpi-wps.desktop')), { code: 'ENOENT' })
+  }
+  await install('--uninstall')
+  await install()
+  assert.equal((await fetch(new URL('health', base))).status, 200)
+  await install('--uninstall')
+  console.log(`WPS registration, startup, reinstall and uninstall passed on ${process.platform}`)
 } finally {
   if (base) {
     await fetch(new URL('api/installer/stop', base), {

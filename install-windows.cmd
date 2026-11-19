@@ -19,11 +19,11 @@ call npm run build
 if errorlevel 1 goto failed
 
 :install
-node dist\install.mjs
+node dist\install.mjs %*
 goto result
 
 :bundled
-runtime\node.exe dist\install.mjs
+runtime\node.exe dist\install.mjs %*
 
 :result
 if errorlevel 1 goto failed

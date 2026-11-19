@@ -70,6 +70,7 @@ try {
     copyLicenses(join(staging, 'licenses')),
     cp(join(root, 'README.md'), join(staging, 'README.md')),
     cp(join(root, launcher), join(staging, launcher)),
+    cp(join(root, 'scripts', 'update.mjs'), join(staging, 'update.mjs')),
     ...runtime.map(file => cp(join(root, 'dist', file), join(staging, 'dist', file), { recursive: true })),
   ])
   const zip = `${name}.zip`

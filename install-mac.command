@@ -2,7 +2,7 @@
 set -e
 cd -- "${0:A:h}"
 if [[ -x runtime/bin/node ]]; then
-  exec ./runtime/bin/node dist/install.mjs
+  exec ./runtime/bin/node dist/install.mjs "$@"
 fi
 export PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 if ! command -v node >/dev/null || ! node -e 'const [major,minor] = process.versions.node.split(".").map(Number); process.exit(major > 22 || (major === 22 && minor >= 16) ? 0 : 1)'; then
@@ -24,4 +24,4 @@ if [[ -f package.json ]]; then
   fi
   npm run build
 fi
-node dist/install.mjs
+node dist/install.mjs "$@"
