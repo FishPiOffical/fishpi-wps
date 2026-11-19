@@ -1,0 +1,133 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos-arm64, macos-x64, windows-arm64, windows-x64, linux-arm64, linux-x64]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Verify tag
+        if: github.event_name == 'push'
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          if [[ "$GITHUB_REF_NAME" != "v$version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      - run: npm ci
+      - run: npm run package -- ${{ matrix.target }}
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: package-${{ matrix.target }}
+          path: downloads/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+  test:
+    needs: package
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: macos-arm64, runner: macos-15 }
+          - { target: macos-x64, runner: macos-15-intel }
+          - { target: windows-arm64, runner: windows-11-arm }
+          - { target: windows-x64, runner: windows-latest }
+          - { target: linux-arm64, runner: ubuntu-24.04-arm }
+          - { target: linux-x64, runner: ubuntu-latest }
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm test
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: package-${{ matrix.target }}
+          path: downloads
+      - if: runner.os == 'Windows'
+        name: Extract and verify Windows installation
+        shell: pwsh
+        run: |
+          Expand-Archive -LiteralPath (Get-ChildItem downloads/*.zip).FullName -DestinationPath extracted
+          $folder = (Get-ChildItem extracted -Directory).FullName
+          node scripts/verify-install.mjs $folder
+      - if: runner.os != 'Windows'
+        name: Extract package
+        run: |
+          unzip -t downloads/*.zip
+          unzip -q downloads/*.zip -d extracted
+      - if: runner.os == 'Linux'
+        name: Verify Linux installation
+        run: node scripts/verify-install.mjs extracted/*
+      - if: runner.os == 'macOS'
+        name: Verify bundled macOS runtime
+        run: |
+          folder=(extracted/*)
+          PATH=/usr/bin:/bin "${folder[0]}/runtime/bin/node" --version
+          PATH=/usr/bin:/bin "${folder[0]}/runtime/bin/node" --check "${folder[0]}/dist/install.mjs"
+
+  release:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          pattern: package-*
+          merge-multiple: true
+          path: downloads
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          assets=(downloads/*.zip)
+          if [[ "${#assets[@]}" != 6 ]]; then
+            echo "::error::Expected six platform ZIPs"
+            exit 1
+          fi
+          if release="$(gh release view "$GITHUB_REF_NAME" --json assets,isDraft)"; then
+            for asset in "${assets[@]}"; do
+              if ! jq -e --arg name "${asset##*/}" 'any(.assets[]; .name == $name)' <<< "$release" >/dev/null; then
+                gh release upload "$GITHUB_REF_NAME" "$asset"
+              fi
+            done
+            if jq -e '.isDraft' <<< "$release" >/dev/null; then
+              gh release edit "$GITHUB_REF_NAME" --draft=false
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" --verify-tag --generate-notes
+          fi

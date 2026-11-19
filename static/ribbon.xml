@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<customUI xmlns="http://schemas.microsoft.com/office/2006/01/customui" onLoad="OnAddinLoad">
+  <ribbon startFromScratch="false">
+    <tabs>
+      <tab id="fishpiWpsTab" label="摸鱼派">
+        <group id="fishpiWpsChatGroup" label="摸鱼派">
+          <button id="fishpiWpsOpenChat" label="打开聊天室" size="large" onAction="OpenFishPiChat" getImage="GetFishPiIcon"/>
+          <button id="fishpiWpsVisitSite" label="访问摸鱼派" size="large" onAction="VisitFishPi" getImage="GetFishPiIcon"/>
+        </group>
+      </tab>
+    </tabs>
+  </ribbon>
+</customUI>

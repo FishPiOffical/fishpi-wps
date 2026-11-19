@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<JsPlugin>
+  <ApiVersion>1.0.0</ApiVersion>
+  <Name>fishpi-wps</Name>
+  <Description>摸鱼派聊天室 for WPS</Description>
+</JsPlugin>
