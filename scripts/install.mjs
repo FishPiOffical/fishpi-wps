@@ -1,14 +1,15 @@
 import { execFile, spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { access, mkdir, open, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, open, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { setTimeout } from 'node:timers/promises'
-import { promisify } from 'node:util'
+import { parseArgs, promisify } from 'node:util'
 import { addinUrl, bridgeConfig, dataDir, readBridgeConfig } from '../src/bridge-config.js'
-import { registerAddin, unregisterAddin } from '../src/registration.js'
+import { registerAddin, registeredBridgeUrls, unregisterAddin } from '../src/registration.js'
 import { restartMacAgent, stopMacAgent } from './mac-launch-agent.mjs'
+import { purgeLocalData, removeReleaseFiles, validateReleaseDirectory } from './uninstall-files.mjs'
 
 const command = promisify(execFile)
 const home = homedir()
@@ -195,7 +196,15 @@ async function install() {
   console.log('安装成功。保存文档并完全退出 WPS，然后重新打开 WPS 文字。顶部选择「摸鱼派 → 打开聊天室」。')
 }
 
-async function uninstall() {
+async function uninstall(options) {
+  const paths = await Promise.all([process.execPath, fileURLToPath(import.meta.url), process.cwd()].map(path => realpath(path)))
+  const directories = new Set()
+  for (const requested of options['remove-files'] ?? []) {
+    const directory = await validateReleaseDirectory(requested, paths)
+    if (directory) directories.add(directory)
+    else console.log(`安装目录已不存在：${requested}`)
+  }
+
   const manifest = manifestPath()
   const oldXml = await readManifest(manifest)
   await changeManifest(manifest, oldXml, oldXml === null ? null : unregisterAddin(oldXml), async () => {
@@ -203,20 +212,39 @@ async function uninstall() {
       await stopMacAgent({ command, domain: gui, label })
       await rm(service, { force: true })
     } else {
-      const config = await readBridgeConfig()
-      if (config) await stopDesktopBridge(addinUrl(config))
+      const urls = new Set(oldXml === null ? [] : registeredBridgeUrls(oldXml))
+      const config = await readBridgeConfig().catch(error => {
+        if (error instanceof SyntaxError || error.code === 'INVALID_BRIDGE_CONFIG') return null
+        throw error
+      })
+      if (config) urls.add(addinUrl(config))
+      for (const url of urls) await stopDesktopBridge(url)
       if (platform === 'win32') await windowsStartup('remove')
       if (platform === 'linux') await rm(linuxStartupPath(), { force: true })
     }
   })
-  console.log('卸载成功。请保存文档并完全退出 WPS。重新打开后，摸鱼派入口会消失。')
+  console.log('已从 WPS 移除摸鱼派，并停止本地服务。请完全退出并重新打开 WPS。')
+  for (const directory of directories) {
+    await removeReleaseFiles(directory)
+    console.log(`已删除安装文件：${directory}`)
+  }
+  if (options['purge-data']) {
+    await purgeLocalData(dataDir)
+    console.log('已删除摸鱼派在本机保存的登录信息、设置和日志。')
+  }
 }
 
 try {
-  const args = process.argv.slice(2)
-  if (args.length === 0) await install()
-  else if (args.length === 1 && args[0] === '--uninstall') await uninstall()
-  else throw new Error('仅支持安装（无参数）或卸载（--uninstall）')
+  const { values } = parseArgs({
+    options: {
+      uninstall: { type: 'boolean' },
+      'remove-files': { type: 'string', multiple: true },
+      'purge-data': { type: 'boolean' },
+    },
+  })
+  if (values.uninstall) await uninstall(values)
+  else if (Object.keys(values).length === 0) await install()
+  else throw new Error('删除文件时请同时指定 --uninstall')
 } catch (error) {
   if (platform === 'darwin' && ['EPERM', 'EACCES'].includes(error.code) && error.path?.startsWith(macContainer)) {
     console.error('macOS 拒绝访问 WPS 的加载项目录。请从 Finder 双击 install-mac.command，并允许出现的 WPS App 数据访问提示。')

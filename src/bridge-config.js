@@ -19,9 +19,9 @@ const configPath = join(dataDir, 'bridge.json')
 export async function readBridgeConfig() {
   try {
     const config = JSON.parse(await readFile(configPath, 'utf8'))
-    if (!/^[a-f0-9]{64}$/u.test(config.token)
+    if (!/^[a-f0-9]{64}$/u.test(config?.token)
       || !Number.isInteger(config.port) || config.port < 1024 || config.port > 65535) {
-      throw new Error('本地摸鱼派服务配置无效')
+      throw Object.assign(new Error('本地摸鱼派服务配置无效'), { code: 'INVALID_BRIDGE_CONFIG' })
     }
     return config
   } catch (error) {

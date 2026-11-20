@@ -8,7 +8,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
-import { registerAddin, unregisterAddin } from '../src/registration.js'
+import { registerAddin, registeredBridgeUrls, unregisterAddin } from '../src/registration.js'
 
 test('WPS registration removes FishPi debugging settings and preserves other add-ins', () => {
   const other = '<jspluginonline name="existing" url="https://example.test/" debug=""/>'
@@ -43,6 +43,14 @@ test('uninstall removes just the FishPi add-in and is safe to repeat', () => {
   const removed = unregisterAddin(xml)
   assert.equal(removed, `<jsplugins><!-- keep -->${other}</jsplugins>\n`)
   assert.equal(unregisterAddin(removed), removed)
+})
+
+test('uninstall can find a legacy bridge URL in WPS when the bridge config is missing', () => {
+  const url = `http://127.0.0.1:36796/${'a'.repeat(64)}/`
+  const xml = `<jsplugins><jspluginonline name="fishpi-wps" url="${url}"/>
+    <jspluginonline name="fishpi-wps" url="https://example.test/"/>
+    <jspluginonline name="other" url="${url}"/></jsplugins>`
+  assert.deepEqual(registeredBridgeUrls(xml), [url])
 })
 
 test('loopback bridge serves the WPS pages and protects chat and gallery requests', { timeout: 7000 }, async t => {

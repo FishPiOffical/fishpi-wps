@@ -26,16 +26,16 @@
 
 也可以使用命令升级。若从 `0.1.0` 升级，先把 [update.mjs](https://raw.githubusercontent.com/FishPiOffical/fishpi-wps/v0.1.1/scripts/update.mjs) 保存到现有解压目录，与 `runtime` 文件夹并列。新版 ZIP 已附带此脚本。脚本会从 GitHub Releases 下载相应架构的 ZIP、校验 SHA-256，并在用户主目录的 `.fishpi-wps/releases` 中安装。Linux 命令升级需要系统有 `unzip`。
 
-| 系统 | 升级到 `0.1.1` |
+| 系统 | 升级到 `0.1.2` |
 | --- | --- |
-| macOS / Linux | `./runtime/bin/node ./update.mjs v0.1.1` |
-| Windows（PowerShell） | `.\runtime\node.exe .\update.mjs v0.1.1` |
+| macOS / Linux | `./runtime/bin/node ./update.mjs v0.1.2` |
+| Windows（PowerShell） | `.\runtime\node.exe .\update.mjs v0.1.2` |
 
 省略版本参数会安装 GitHub 上最新的正式版本。
 
 ## 卸载
 
-保存文档并完全退出 WPS，在 `0.1.1` 或更新版本的解压目录运行对应命令。这些命令同样可以卸载 `0.1.0`。
+先保存文档并完全退出 WPS。用平时运行 WPS 的账号，在 `0.1.1` 或更新版本的解压目录运行对应命令。即使当前安装的是 `0.1.0`，也可以直接用新版卸载，无需先安装新版。`0.1.0` 的脚本会忽略 `--uninstall`，继续执行安装。
 
 | 系统 | 卸载命令 |
 | --- | --- |
@@ -43,7 +43,19 @@
 | Windows（PowerShell） | `.\install-windows.cmd --uninstall` |
 | Linux | `sh install-linux.sh --uninstall` |
 
-卸载会移除摸鱼派的 WPS 注册和登录启动项，并停止本地服务。重新打开 WPS 文字后，顶部入口会消失。账号和设置默认保留，方便重装。若要清理本地数据，卸载成功后可以删除用户主目录下的 `.fishpi-wps` 和之前解压的安装目录。
+卸载会移除摸鱼派的 WPS 注册和登录启动项，并停止本地服务。重新打开 WPS 文字后，顶部入口会消失。账号和设置默认保留，方便重装。
+
+### 同时删除文件
+
+从 `0.1.2` 或更新版本的解压目录运行卸载命令，把 `--remove-files` 后面的路径换成要删除的旧安装目录。
+
+```powershell
+.\install-windows.cmd --uninstall --remove-files "D:\Apps\fishpi-wps-0.1.0-windows-x64"
+```
+
+macOS 和 Linux 可以在上表的卸载命令后加同样的参数。安装器会核对目录属于摸鱼派，再清理其中的安装文件。还想清除本机登录信息、设置和日志，可以再加 `--purge-data`。通过升级脚本下载的旧版本也可用 `--remove-files` 指定其解压路径。
+
+使用已发布的 `0.1.1` 安装器时，先用 `--uninstall` 完成卸载，随后可以手动删除旧解压目录。若要清除本机账号和设置，也可在卸载后手动删除用户主目录下的 `.fishpi-wps`。
 
 ## 从源码安装
 

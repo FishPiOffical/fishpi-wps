@@ -32,3 +32,11 @@ export function unregisterAddin(xml) {
   for (const entry of matching) root.removeChild(entry)
   return serialize(doc)
 }
+
+export function registeredBridgeUrls(xml) {
+  const { matching } = parseManifest(xml)
+  return matching.map(entry => entry.getAttribute('url')).filter(url => {
+    const port = /^http:\/\/127\.0\.0\.1:([1-9]\d{3,4})\/[a-f0-9]{64}\/$/u.exec(url)?.[1]
+    return port !== undefined && Number(port) <= 65535
+  })
+}

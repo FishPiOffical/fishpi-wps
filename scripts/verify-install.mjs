@@ -14,6 +14,8 @@ import { addinUrl } from '../src/bridge-config.js'
 const windows = process.platform === 'win32'
 assert.ok(windows || process.platform === 'linux', 'Run the installation smoke test on a disposable Windows or Linux machine')
 const extracted = await realpath(process.argv[2])
+const legacyPackage = process.argv[3] ? await realpath(process.argv[3]) : extracted
+const legacyVersion = process.argv[3] ? '0.1.0' : packageInfo.version
 const probe = createServer().listen(0, '127.0.0.1')
 await once(probe, 'listening')
 const { port } = probe.address()
@@ -29,6 +31,12 @@ const manifest = windows
 const launcher = windows ? 'install-windows.cmd' : 'install-linux.sh'
 const executable = windows ? process.env.ComSpec : '/bin/sh'
 const args = windows ? ['/d', '/c', launcher] : [launcher]
+const run = promisify(execFile)
+const startup = windows
+  ? join((await run(join(process.env.SystemRoot, 'System32/WindowsPowerShell/v1.0/powershell.exe'), [
+      '-NoProfile', '-NonInteractive', '-Command', "[Environment]::GetFolderPath('Startup', 'Create')",
+    ])).stdout.trim(), 'FishPi WPS Bridge.lnk')
+  : join(config, 'autostart/fishpi-wps.desktop')
 const env = {
   ...process.env,
   CI: 'true',
@@ -40,13 +48,17 @@ const env = {
   PATH: windows ? join(process.env.SystemRoot, 'System32') : '/usr/bin:/bin',
 }
 let base
+let startupOwned = false
 try {
+  await assert.rejects(readFile(startup), { code: 'ENOENT' }, 'Run on a test account without an existing FishPi startup entry')
+  startupOwned = true
   for (const file of ['runtime', 'dist', launcher]) {
     await cp(join(extracted, file), join(temp, file), { recursive: true })
   }
   await mkdir(dirname(manifest), { recursive: true })
   await writeFile(manifest, '<jsplugins><jspluginonline name="existing" debug=""/><jspluginonline name="fishpi-wps" debug="" enable="enable_dev"/></jsplugins>')
-  const install = (...options) => promisify(execFile)(executable, [...args, ...options], { cwd: temp, env, timeout: 25_000 })
+  const invoke = (cwd, ...options) => run(executable, [...args, ...options], { cwd, env, timeout: 25_000 })
+  const install = (...options) => invoke(temp, ...options)
   await install()
   base = addinUrl(JSON.parse(await readFile(join(dataDir, 'bridge.json'), 'utf8')))
   assert.deepEqual(await (await fetch(new URL('health', base))).json(), { version: packageInfo.version, nativeClipboard: false })
@@ -60,8 +72,10 @@ try {
   assert.equal(entries[1].hasAttribute('debug'), false)
   assert.equal(entries[1].hasAttribute('enable'), false)
   if (!windows) {
-    const desktop = await readFile(join(config, 'autostart/fishpi-wps.desktop'), 'utf8')
+    const desktop = await readFile(startup, 'utf8')
     assert.match(desktop, /^Exec=.*\/dist\/server\.mjs"$/mu)
+  } else {
+    assert.ok((await readFile(startup)).length > 0)
   }
   await install()
   assert.equal((await fetch(new URL('health', base))).status, 200)
@@ -71,14 +85,27 @@ try {
   assert.doesNotMatch(uninstalled, /name="fishpi-wps"/u)
   assert.equal(addinUrl(JSON.parse(await readFile(join(dataDir, 'bridge.json'), 'utf8'))), base)
   assert.equal(await fetch(new URL('health', base)).then(response => response.ok, () => false), false)
-  if (!windows) {
-    await assert.rejects(readFile(join(config, 'autostart/fishpi-wps.desktop')), { code: 'ENOENT' })
-  }
+  await assert.rejects(readFile(startup), { code: 'ENOENT' })
   await install('--uninstall')
-  await install()
-  assert.equal((await fetch(new URL('health', base))).status, 200)
-  await install('--uninstall')
-  console.log(`WPS registration, startup, reinstall and uninstall passed on ${process.platform}`)
+  const oldRelease = join(temp, 'Old release')
+  await cp(legacyPackage, oldRelease, { recursive: true })
+  await invoke(oldRelease)
+  assert.equal((await (await fetch(new URL('health', base))).json()).version, legacyVersion)
+  await writeFile(join(dataDir, 'preferences.json'), '{"mode":"plain"}')
+  await writeFile(join(oldRelease, 'personal.txt'), 'keep')
+  await writeFile(join(oldRelease, 'dist', 'personal.txt'), 'also keep')
+  await install('--uninstall', '--remove-files', oldRelease, '--purge-data')
+  assert.equal(await readFile(join(oldRelease, 'personal.txt'), 'utf8'), 'keep')
+  assert.equal(await readFile(join(oldRelease, 'dist', 'personal.txt'), 'utf8'), 'also keep')
+  const afterCleanup = await readFile(manifest, 'utf8')
+  assert.match(afterCleanup, /name="existing"/u)
+  assert.doesNotMatch(afterCleanup, /name="fishpi-wps"/u)
+  await assert.rejects(readFile(startup), { code: 'ENOENT' })
+  assert.equal(await fetch(new URL('health', base)).then(response => response.ok, () => false), false)
+  await assert.rejects(readFile(join(oldRelease, 'dist/web/manifest.xml')), { code: 'ENOENT' })
+  await assert.rejects(readFile(join(dataDir, 'bridge.json')), { code: 'ENOENT' })
+  await assert.rejects(readFile(join(dataDir, 'preferences.json')), { code: 'ENOENT' })
+  console.log(`WPS registration, startup, reinstall, uninstall and file cleanup of ${legacyVersion} passed on ${process.platform}`)
 } finally {
   if (base) {
     await fetch(new URL('api/installer/stop', base), {
@@ -89,5 +116,6 @@ try {
     }).catch(() => {})
     await setTimeout(350)
   }
+  if (startupOwned) await rm(startup, { force: true })
   await rm(temp, { recursive: true, force: true, maxRetries: 3, retryDelay: 150 })
 }

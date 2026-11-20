@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { cp, mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -62,6 +62,13 @@ const temp = await mkdtemp(join(tmpdir(), 'fishpi-wps-package-'))
 const staging = join(temp, name)
 const launcher = launchers[target.split('-')[0]]
 const runtime = ['server.mjs', 'install.mjs', 'web']
+const copyLauncher = async () => {
+  const from = join(root, launcher)
+  const to = join(staging, launcher)
+  if (!launcher.endsWith('.cmd')) return cp(from, to)
+  const script = await readFile(from, 'utf8')
+  return writeFile(to, script.replace(/\r?\n/gu, '\r\n'))
+}
 try {
   await mkdir(join(staging, 'dist'), { recursive: true })
   await mkdir(downloads, { recursive: true })
@@ -69,7 +76,7 @@ try {
     copyNode(join(staging, 'runtime'), temp),
     copyLicenses(join(staging, 'licenses')),
     cp(join(root, 'README.md'), join(staging, 'README.md')),
-    cp(join(root, launcher), join(staging, launcher)),
+    copyLauncher(),
     cp(join(root, 'scripts', 'update.mjs'), join(staging, 'update.mjs')),
     ...runtime.map(file => cp(join(root, 'dist', file), join(staging, 'dist', file), { recursive: true })),
   ])
